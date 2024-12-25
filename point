@@ -1,3 +1,7 @@
+DB추가
+alter table t_shopping_member
+add member_point number default 0;
+
 <h1>order.xml<h1>
 
 <result property="goods_point" column="goods_point" />
