@@ -1,0 +1,147 @@
+<h1>order.xml</h1>
+
+<result property="goods_point" column="goods_point" />
+
+	<update id="updateUsePoint" parameterType="java.util.Map">
+		update t_shopping_member
+	 	set member_point = (member_point-${usePoint})+${getPoint} where member_id =#{member_id}
+	
+	</update>
+	
+	<select id="getPoint" resultType="int">
+	 <![CDATA[
+	 select member_point from t_shopping_member where member_id =#{member_id}
+	 ]]>
+	 
+	</select>
+
+<h1>orderControllerImpl.java</h1>
+
+@RequestMapping(value="/orderAllCartGoods.do" ,method = RequestMethod.POST)
+	public ModelAndView orderAllCartGoods( @RequestParam("cart_goods_qty")  String[] cart_goods_qty,
+			                 HttpServletRequest request, HttpServletResponse response)  throws Exception{
+		String viewName=(String)request.getAttribute("viewName");
+		ModelAndView mav = new ModelAndView(viewName);
+		HttpSession session=request.getSession();
+		Map cartMap=(Map)session.getAttribute("cartMap");
+		List myOrderList=new ArrayList<OrderVO>();
+		
+		List<GoodsVO> myGoodsList=(List<GoodsVO>)cartMap.get("myGoodsList");
+		MemberVO memberVO=(MemberVO)session.getAttribute("memberInfo");
+		
+		for(int i=0; i<cart_goods_qty.length;i++){
+			String[] cart_goods=cart_goods_qty[i].split(":");
+			for(int j = 0; j< myGoodsList.size();j++) {
+				GoodsVO goodsVO = myGoodsList.get(j);
+				int goods_id = goodsVO.getGoods_id();
+				if(goods_id==Integer.parseInt(cart_goods[0])) {
+					OrderVO _orderVO=new OrderVO();
+					String goods_title=goodsVO.getGoods_title();
+					int goods_sales_price=goodsVO.getGoods_sales_price();
+					String goods_fileName=goodsVO.getGoods_fileName();
+					
+					//포인트
+					int goods_delivery_price = Integer.parseInt(goodsVO.getGoods_delivery_price());
+					int goods_point = goodsVO.getGoods_point();
+					_orderVO.setGoods_delivery_price(goods_delivery_price);
+					_orderVO.setGoods_point(goods_point);
+					
+					_orderVO.setGoods_id(goods_id);
+					_orderVO.setGoods_title(goods_title);
+					_orderVO.setGoods_sales_price(goods_sales_price);
+					_orderVO.setGoods_fileName(goods_fileName);
+					_orderVO.setOrder_goods_qty(Integer.parseInt(cart_goods[1]));
+					myOrderList.add(_orderVO);
+					break;
+				}
+			}
+		}
+		session.setAttribute("myOrderList", myOrderList);
+		session.setAttribute("orderer", memberVO);
+		return mav;
+	}	
+	
+	@RequestMapping(value="/payToOrderGoods.do" ,method = RequestMethod.POST)
+	public ModelAndView payToOrderGoods(@RequestParam Map<String, String> receiverMap,
+			                       HttpServletRequest request, HttpServletResponse response)  throws Exception{
+		String viewName=(String)request.getAttribute("viewName");
+		ModelAndView mav = new ModelAndView(viewName);
+		
+		HttpSession session=request.getSession();
+		MemberVO memberVO=(MemberVO)session.getAttribute("orderer");
+		String member_id=memberVO.getMember_id();
+		String orderer_name=memberVO.getMember_name();
+		String orderer_hp = memberVO.getHp1()+"-"+memberVO.getHp2()+"-"+memberVO.getHp3();
+		int member_point = memberVO.getMember_point();
+		List<OrderVO> myOrderList=(List<OrderVO>)session.getAttribute("myOrderList");
+		for(int i=0; i<myOrderList.size();i++){
+			OrderVO orderVO=(OrderVO)myOrderList.get(i);
+			orderVO.setMember_id(member_id);
+			orderVO.setOrderer_name(orderer_name);
+			orderVO.setReceiver_name(receiverMap.get("receiver_name"));
+			
+			orderVO.setReceiver_hp1(receiverMap.get("receiver_hp1"));
+			orderVO.setReceiver_hp2(receiverMap.get("receiver_hp2"));
+			orderVO.setReceiver_hp3(receiverMap.get("receiver_hp3"));
+			orderVO.setReceiver_tel1(receiverMap.get("receiver_tel1"));
+			orderVO.setReceiver_tel2(receiverMap.get("receiver_tel2"));
+			orderVO.setReceiver_tel3(receiverMap.get("receiver_tel3"));
+			
+			orderVO.setDelivery_address(receiverMap.get("delivery_address"));
+			orderVO.setDelivery_message(receiverMap.get("delivery_message"));
+			orderVO.setDelivery_method(receiverMap.get("delivery_method"));
+			orderVO.setGift_wrapping(receiverMap.get("gift_wrapping"));
+			orderVO.setPay_method(receiverMap.get("pay_method"));
+			orderVO.setCard_com_name(receiverMap.get("card_com_name"));
+			orderVO.setCard_pay_month(receiverMap.get("card_pay_month"));
+			orderVO.setPay_orderer_hp_num(receiverMap.get("pay_orderer_hp_num"));	
+			orderVO.setOrderer_hp(orderer_hp);	
+			myOrderList.set(i, orderVO); 
+		}//end for
+		//주문
+	    orderService.addNewOrder(myOrderList);
+		//포인트 추가
+	    String usePoint = receiverMap.get("use_point");
+	    String getPoint = receiverMap.get("total_point");
+	    System.out.println("사용 포인트" + usePoint);
+	    System.out.println("적립 포인트 : " + getPoint);
+	    
+	    Map<String,String> map = new HashMap<String, String>();
+	    map.put("usePoint", usePoint);
+	    map.put("getPoint",getPoint);
+	    map.put("member_id", member_id);
+	    //포인트 수정
+	    int newPoint = orderService.updatePoint(map);
+	    
+	    mav.addObject("myOrderInfo",receiverMap);
+		mav.addObject("myOrderList", myOrderList);
+		mav.addObject("member_point",member_point);
+		return mav;
+	}
+
+<h1>orderDaoImpl.java</h1>
+	@Override
+	public int updatePoint(Map<String, String> map) throws DataAccessException {
+		sqlSession.update("mapper.order.updateUsePoint",map);
+		int newPoint = sqlSession.selectOne("mapper.order.getPoint",map);
+		return newPoint;
+	}
+
+<h1>orderVO.java 추가</h1>
+	private int goods_delivery_price;
+	private int goods_point;
+	public int getGoods_delivery_price() {
+		return goods_delivery_price;
+	}
+	public void setGoods_delivery_price(int goods_delivery_price) {
+		this.goods_delivery_price = goods_delivery_price;
+	}
+	public int getGoods_point() {
+		return goods_point;
+	}
+	public void setGoods_point(int goods_point) {
+		this.goods_point = goods_point;
+	}
+
+
+
